@@ -179,10 +179,14 @@ public abstract class ClientImpl extends AbstractIdleService implements Client, 
     @Override
     protected void startUp() throws Exception {
         log.info("Begin to start the rocketmq client, clientId={}", clientId);
+
+        // 1. 启动rpc客户端
         this.clientManager.startAsync().awaitRunning();
         // Fetch topic route from remote.
         log.info("Begin to fetch topic(s) route data from remote during client startup, clientId={}, topics={}",
             clientId, topics);
+
+        // 2. 提前刷新路由，如果topic不存在，启动失败
         for (String topic : topics) {
             final ListenableFuture<TopicRouteData> future = fetchTopicRoute(topic);
             future.get();
@@ -191,6 +195,8 @@ public abstract class ClientImpl extends AbstractIdleService implements Client, 
             clientId, topics);
         // Update route cache periodically.
         final ScheduledExecutorService scheduler = clientManager.getScheduler();
+
+        // 3. 每隔30s刷缓存路由
         this.updateRouteCacheFuture = scheduler.scheduleWithFixedDelay(() -> {
             try {
                 updateRouteCache();
@@ -318,7 +324,7 @@ public abstract class ClientImpl extends AbstractIdleService implements Client, 
     public final void onSettingsCommand(Endpoints endpoints, apache.rocketmq.v2.Settings settings) {
         final Metric metric = new Metric(settings.getMetric());
         clientMeterManager.reset(metric);
-        this.getSettings().sync(settings);
+        this.getSettings().sync(settings); // 与本地Settings合并
     }
 
     /**
@@ -326,11 +332,14 @@ public abstract class ClientImpl extends AbstractIdleService implements Client, 
      */
     @Override
     public void syncSettings() {
+        // 子类实现，producer/consumerImpl构造自己的settings
         final apache.rocketmq.v2.Settings settings = getSettings().toProtobuf();
         final TelemetryCommand command = TelemetryCommand.newBuilder().setSettings(settings).build();
+        // 从路由获取endpoints
         final Set<Endpoints> totalRouteEndpoints = getTotalRouteEndpoints();
         for (Endpoints endpoints : totalRouteEndpoints) {
             try {
+                // 发送TelemetryCommand
                 telemetry(endpoints, command);
             } catch (Throwable t) {
                 log.error("Failed to telemeter settings, clientId={}, endpoints={}", clientId, endpoints, t);
@@ -516,8 +525,13 @@ public abstract class ClientImpl extends AbstractIdleService implements Client, 
      */
     @Override
     public void doHeartbeat() {
+        // 从路由数据中，收集所有endpoint
         final Set<Endpoints> totalEndpoints = getTotalRouteEndpoints();
+
+        // 生产者/消费者 各自封装心跳包
         final HeartbeatRequest request = wrapHeartbeatRequest();
+
+        // 循环所有endpoint发送
         for (Endpoints endpoints : totalEndpoints) {
             doHeartbeat(request, endpoints);
         }
@@ -557,7 +571,7 @@ public abstract class ClientImpl extends AbstractIdleService implements Client, 
                         return;
                     }
                     log.info("Send heartbeat successfully, endpoints={}, clientId={}", endpoints, clientId);
-                    final boolean removed = isolated.remove(endpoints);
+                    final boolean removed = isolated.remove(endpoints); // 解除隔离
                     if (removed) {
                         log.info("Rejoin endpoints which is isolated before, clientId={}, endpoints={}", clientId,
                             endpoints);

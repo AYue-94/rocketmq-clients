@@ -45,17 +45,19 @@ public class StandardConsumeService extends ConsumeService {
     @Override
     public void consume(ProcessQueue pq, List<MessageViewImpl> messageViews) {
         for (MessageViewImpl messageView : messageViews) {
-            // Discard corrupted message.
-            if (messageView.isCorrupted()) {
+            // Discard corrupted message. 消息损坏
+            if (messageView.isCorrupted()) { // 消息损坏
                 log.error("Message is corrupted for standard consumption, prepare to discard it, mq={}, "
                     + "messageId={}, clientId={}", pq.getMessageQueue(), messageView.getMessageId(), clientId);
                 pq.discardMessage(messageView);
                 continue;
             }
+            // 提交到消费线程池
             final ListenableFuture<ConsumeResult> future = consume(messageView);
             Futures.addCallback(future, new FutureCallback<ConsumeResult>() {
                 @Override
                 public void onSuccess(ConsumeResult consumeResult) {
+                    // 处理消费结果
                     pq.eraseMessage(messageView, consumeResult);
                 }
 

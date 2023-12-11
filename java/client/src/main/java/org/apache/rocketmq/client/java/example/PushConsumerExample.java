@@ -41,20 +41,20 @@ public class PushConsumerExample {
         final ClientServiceProvider provider = ClientServiceProvider.loadService();
 
         // Credential provider is optional for client configuration.
-        String accessKey = "yourAccessKey";
-        String secretKey = "yourSecretKey";
+        String accessKey = "RocketMQ";
+        String secretKey = "12345678";
         SessionCredentialsProvider sessionCredentialsProvider =
             new StaticSessionCredentialsProvider(accessKey, secretKey);
 
-        String endpoints = "foobar.com:8080";
+        String endpoints = "127.0.0.1:8081;127.0.0.1:8091";
         ClientConfiguration clientConfiguration = ClientConfiguration.newBuilder()
             .setEndpoints(endpoints)
             .setCredentialProvider(sessionCredentialsProvider)
             .build();
-        String tag = "yourMessageTagA";
+        String tag = "*";
         FilterExpression filterExpression = new FilterExpression(tag, FilterExpressionType.TAG);
         String consumerGroup = "yourConsumerGroup";
-        String topic = "yourTopic";
+        String topic = "MyTopic";
         PushConsumer pushConsumer = provider.newPushConsumerBuilder()
             .setClientConfiguration(clientConfiguration)
             // Set the consumer group name.

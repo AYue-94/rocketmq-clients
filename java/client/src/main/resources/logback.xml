@@ -46,9 +46,18 @@
     <appender name="DefaultAppender" class="ch.qos.logback.classic.AsyncAppender">
         <appender-ref ref="DefaultAppenderInner"/>
     </appender>
+
+
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>%d{yyy-MM-dd HH:mm:ss.SSS,GMT+8} %-5p [%pid] [%t] [%logger{12}#%M:%L] - %m%n</pattern>
+            <charset class="java.nio.charset.Charset">UTF-8</charset>
+        </encoder>
+    </appender>
+
     <root level="${rocketmq.log.level:-info}">
         <appender-ref ref="CustomConsoleAppender"/>
-        <appender-ref ref="DefaultAppender" additivity="false"/>
+        <appender-ref ref="STDOUT" additivity="false"/>
     </root>
     <!-- ref: https://github.com/grpc/grpc-java/issues/3033 -->
     <!-- <logger name="io.grpc" level="warn"/> -->

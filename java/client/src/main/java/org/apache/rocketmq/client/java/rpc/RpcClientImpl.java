@@ -56,9 +56,11 @@ import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.net.ssl.SSLException;
 import org.apache.rocketmq.client.java.route.Endpoints;
 
@@ -78,6 +80,7 @@ public class RpcClientImpl implements RpcClient {
             NettyChannelBuilder.forTarget(endpoints.getGrpcTarget())
                 .withOption(ChannelOption.CONNECT_TIMEOUT_MILLIS, CONNECT_TIMEOUT_MILLIS)
                 .maxInboundMessageSize(GRPC_MAX_MESSAGE_SIZE)
+//                .defaultLoadBalancingPolicy("pick_first") // PickFirstLoadBalancer
                 .intercept(LoggingInterceptor.getInstance());
 
         if (sslEnabled) {
@@ -112,6 +115,7 @@ public class RpcClientImpl implements RpcClient {
         channel.shutdown().awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
     }
 
+    // 根据topic查询路由
     @Override
     public ListenableFuture<QueryRouteResponse> queryRoute(Metadata metadata,
         QueryRouteRequest request, Executor executor, Duration duration) {
@@ -120,6 +124,7 @@ public class RpcClientImpl implements RpcClient {
             .withDeadlineAfter(duration.toNanos(), TimeUnit.NANOSECONDS).queryRoute(request);
     }
 
+    // 心跳
     @Override
     public ListenableFuture<HeartbeatResponse> heartbeat(Metadata metadata,
         HeartbeatRequest request, Executor executor, Duration duration) {
@@ -128,6 +133,7 @@ public class RpcClientImpl implements RpcClient {
             .withDeadlineAfter(duration.toNanos(), TimeUnit.NANOSECONDS).heartbeat(request);
     }
 
+    // 发送消息
     @Override
     public ListenableFuture<SendMessageResponse> sendMessage(Metadata metadata,
         SendMessageRequest request, Executor executor, Duration duration) {
@@ -136,6 +142,7 @@ public class RpcClientImpl implements RpcClient {
             .withDeadlineAfter(duration.toNanos(), TimeUnit.NANOSECONDS).sendMessage(request);
     }
 
+    // rebalance
     @Override
     public ListenableFuture<QueryAssignmentResponse> queryAssignment(Metadata metadata,
         QueryAssignmentRequest request, Executor executor, Duration duration) {
@@ -144,6 +151,7 @@ public class RpcClientImpl implements RpcClient {
             .withDeadlineAfter(duration.toNanos(), TimeUnit.NANOSECONDS).queryAssignment(request);
     }
 
+    // pull 消息
     @Override
     public ListenableFuture<List<ReceiveMessageResponse>> receiveMessage(Metadata metadata,
         ReceiveMessageRequest request, ExecutorService executor, Duration duration) {
@@ -155,6 +163,7 @@ public class RpcClientImpl implements RpcClient {
             .receiveMessage(request, new StreamObserver<ReceiveMessageResponse>() {
                 @Override
                 public void onNext(ReceiveMessageResponse response) {
+                    // 收到多个数据包
                     responses.add(response);
                 }
 
@@ -165,12 +174,14 @@ public class RpcClientImpl implements RpcClient {
 
                 @Override
                 public void onCompleted() {
+                    // END_STREAM，future完成
                     future.set(responses);
                 }
             });
         return future;
     }
 
+    // ack 消息
     @Override
     public ListenableFuture<AckMessageResponse> ackMessage(Metadata metadata,
         AckMessageRequest request, Executor executor, Duration duration) {
@@ -179,6 +190,7 @@ public class RpcClientImpl implements RpcClient {
             .withDeadlineAfter(duration.toNanos(), TimeUnit.NANOSECONDS).ackMessage(request);
     }
 
+    // 消费失败 changeInvisibleTime
     @Override
     public ListenableFuture<ChangeInvisibleDurationResponse> changeInvisibleDuration(Metadata metadata,
         ChangeInvisibleDurationRequest request, Executor executor,
@@ -188,6 +200,7 @@ public class RpcClientImpl implements RpcClient {
             .withDeadlineAfter(duration.toNanos(), TimeUnit.NANOSECONDS).changeInvisibleDuration(request);
     }
 
+    // 发dlq
     @Override
     public ListenableFuture<ForwardMessageToDeadLetterQueueResponse> forwardMessageToDeadLetterQueue(
         Metadata metadata, ForwardMessageToDeadLetterQueueRequest request, Executor executor, Duration duration) {
@@ -196,6 +209,7 @@ public class RpcClientImpl implements RpcClient {
             .withDeadlineAfter(duration.toNanos(), TimeUnit.NANOSECONDS).forwardMessageToDeadLetterQueue(request);
     }
 
+    // 事务消息 二阶段 endTransaction
     @Override
     public ListenableFuture<EndTransactionResponse> endTransaction(Metadata metadata, EndTransactionRequest request,
         Executor executor, Duration duration) {
@@ -212,6 +226,7 @@ public class RpcClientImpl implements RpcClient {
             .withDeadlineAfter(duration.toNanos(), TimeUnit.NANOSECONDS).notifyClientTermination(request);
     }
 
+    // settings同步
     @Override
     public StreamObserver<TelemetryCommand> telemetry(Metadata metadata, Executor executor, Duration duration,
         StreamObserver<TelemetryCommand> responseObserver) {

@@ -368,6 +368,7 @@ public class ClientManagerImpl extends ClientManager {
         scheduler.scheduleWithFixedDelay(
             () -> {
                 try {
+                    // 每分钟清理空闲通讯客户端(30min空闲)
                     clearIdleRpcClients();
                 } catch (Throwable t) {
                     log.error("Exception raised during the clearing of idle rpc clients, clientId={}", clientId, t);
@@ -381,6 +382,7 @@ public class ClientManagerImpl extends ClientManager {
         scheduler.scheduleWithFixedDelay(
             () -> {
                 try {
+                    // ProducerImpl/ConsumerImpl 每10s向proxy发送心跳
                     client.doHeartbeat();
                 } catch (Throwable t) {
                     log.error("Exception raised during heartbeat, clientId={}", clientId, t);
@@ -411,13 +413,14 @@ public class ClientManagerImpl extends ClientManager {
         scheduler.scheduleWithFixedDelay(
             () -> {
                 try {
+                    // 每5分钟与proxy执行settings同步
                     client.syncSettings();
                 } catch (Throwable t) {
                     log.error("Exception raised during the setting synchronization, clientId={}", clientId, t);
                 }
             },
             SYNC_SETTINGS_DELAY.toNanos(),
-            SYNC_SETTINGS_PERIOD.toNanos(),
+            SYNC_SETTINGS_PERIOD.toNanos(), // 5min
             TimeUnit.NANOSECONDS
         );
         log.info("The client manager starts successfully, clientId={}", clientId);

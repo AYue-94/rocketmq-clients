@@ -164,6 +164,7 @@ class PushConsumerImpl extends ConsumerImpl implements PushConsumer {
             // Scan assignments periodically.
             scanAssignmentsFuture = scheduler.scheduleWithFixedDelay(() -> {
                 try {
+                    // 每隔5s执行scanAssignments
                     scanAssignments();
                 } catch (Throwable t) {
                     log.error("Exception raised while scanning the load assignments, clientId={}", clientId, t);
@@ -266,8 +267,10 @@ class PushConsumerImpl extends ConsumerImpl implements PushConsumer {
     }
 
     ListenableFuture<Assignments> queryAssignment(final String topic) {
+        // 从路由中获取endpoints
         final ListenableFuture<Endpoints> future0 = pickEndpointsToQueryAssignments(topic);
         return Futures.transformAsync(future0, endpoints -> {
+            // QueryAssignmentRequest = topic + endpoints + consumerGroup
             final QueryAssignmentRequest request = wrapQueryAssignmentRequest(topic);
             final Duration requestTimeout = clientConfiguration.getRequestTimeout();
             final RpcFuture<QueryAssignmentRequest, QueryAssignmentResponse> future1 =
@@ -275,6 +278,7 @@ class PushConsumerImpl extends ConsumerImpl implements PushConsumer {
             return Futures.transformAsync(future1, response -> {
                 final Status status = response.getStatus();
                 StatusChecker.check(status, future1);
+                // proto -> Assignment
                 final List<Assignment> assignmentList = response.getAssignmentsList().stream().map(assignment ->
                     new Assignment(new MessageQueueImpl(assignment.getMessageQueue()))).collect(Collectors.toList());
                 final Assignments assignments = new Assignments(assignmentList);
@@ -356,13 +360,14 @@ class PushConsumerImpl extends ConsumerImpl implements PushConsumer {
             activeMqs.add(mq);
         }
 
-        for (MessageQueueImpl mq : latest) {
+        for (MessageQueueImpl mq : latest) { // 不同broker，queueId都是-1，每个broker对应一个ProcessQueue
             if (activeMqs.contains(mq)) {
                 continue;
             }
             final Optional<ProcessQueue> optionalProcessQueue = createProcessQueue(mq, filterExpression);
             if (optionalProcessQueue.isPresent()) {
                 log.info("Start to fetch message from remote, mq={}, clientId={}", mq, clientId);
+                // 提交到io线程 ClientAsyncWorker
                 optionalProcessQueue.get().fetchMessageImmediately();
             }
         }
@@ -372,16 +377,21 @@ class PushConsumerImpl extends ConsumerImpl implements PushConsumer {
     void scanAssignments() {
         try {
             log.debug("Start to scan assignments periodically, clientId={}", clientId);
+            // 循环订阅topic
             for (Map.Entry<String, FilterExpression> entry : subscriptionExpressions.entrySet()) {
                 final String topic = entry.getKey();
                 final FilterExpression filterExpression = entry.getValue();
+                // 缓存Assignments
                 final Assignments existed = cacheAssignments.get(topic);
+                // 调用proxy查询Assignments
                 final ListenableFuture<Assignments> future = queryAssignment(topic);
+                // 更新本地Assignments
                 Futures.addCallback(future, new FutureCallback<Assignments>() {
                     @Override
                     public void onSuccess(Assignments latest) {
                         if (latest.getAssignmentList().isEmpty()) {
                             if (null == existed || existed.getAssignmentList().isEmpty()) {
+                                // case1 proxy返回Assignments = 本地Assignments = null
                                 log.info("Acquired empty assignments from remote, would scan later, topic={}, "
                                     + "clientId={}", topic, clientId);
                                 return;
@@ -390,6 +400,7 @@ class PushConsumerImpl extends ConsumerImpl implements PushConsumer {
                                 + " is not empty, topic={}, clientId={}", topic, clientId);
                         }
 
+                        // case2 proxy返回Assignments != 本地Assignments
                         if (!latest.equals(existed)) {
                             log.info("Assignments of topic={} has changed, {} => {}, clientId={}", topic, existed,
                                 latest, clientId);
@@ -447,6 +458,7 @@ class PushConsumerImpl extends ConsumerImpl implements PushConsumer {
         if (size <= 0) {
             return 0;
         }
+        // max(1, 1024/master broker数量)
         return Math.max(1, maxCacheMessageCount / size);
     }
 

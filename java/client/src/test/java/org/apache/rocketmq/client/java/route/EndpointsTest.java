@@ -65,6 +65,7 @@ public class EndpointsTest {
 
         Assert.assertEquals(AddressScheme.IPv4, endpoints.getScheme());
         Assert.assertEquals("ipv4:127.0.0.1:8080,127.0.0.2:8081", endpoints.getFacade());
+        Assert.assertEquals("ipv4:127.0.0.1:8080,127.0.0.2:8081", endpoints.getGrpcTarget());
     }
 
     @Test
@@ -110,6 +111,9 @@ public class EndpointsTest {
         final Address address = iterator.next();
         Assert.assertEquals("rocketmq.apache.org", address.getHost());
         Assert.assertEquals(80, address.getPort());
+
+        Assert.assertEquals("dns:rocketmq.apache.org:80", endpoints.getFacade());
+        Assert.assertEquals("rocketmq.apache.org:80", endpoints.getGrpcTarget());
     }
 
     @Test

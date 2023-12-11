@@ -80,6 +80,7 @@ public class PublishingLoadBalancer {
         List<MessageQueueImpl> candidates = new ArrayList<>();
         Set<String> candidateBrokerNames = new HashSet<>();
 
+        // 先排除isolated中的Endpoints，选择3个
         for (int i = 0; i < messageQueues.size(); i++) {
             final MessageQueueImpl messageQueueImpl = messageQueues.get(IntMath.mod(next++, messageQueues.size()));
             final Broker broker = messageQueueImpl.getBroker();
@@ -93,6 +94,7 @@ public class PublishingLoadBalancer {
             }
         }
         // If all endpoints are isolated.
+        // 如果没queue，只能从isolated中选
         if (candidates.isEmpty()) {
             for (int i = 0; i < messageQueues.size(); i++) {
                 final MessageQueueImpl messageQueueImpl = messageQueues.get(IntMath.mod(next++, messageQueues.size()));

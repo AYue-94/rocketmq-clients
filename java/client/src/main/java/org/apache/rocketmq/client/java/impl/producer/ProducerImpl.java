@@ -399,12 +399,18 @@ class ProducerImpl extends ClientImpl implements Producer {
 
         this.topics.add(topic);
         // Get publishing topic route.
+        // 获取路由
         final ListenableFuture<PublishingLoadBalancer> routeFuture = getPublishingLoadBalancer(topic);
         return Futures.transformAsync(routeFuture, result -> {
+            // 选队列
             // Prepare the candidate message queue(s) for retry-sending in advance.
-            final List<MessageQueueImpl> candidates = null == messageGroup ? takeMessageQueues(result) :
+            final List<MessageQueueImpl> candidates = null == messageGroup ?
+                // 普通消息，按照重试次数（3）轮询选队列
+                takeMessageQueues(result) :
+                // 顺序消息，按照hash(messageGroup)%messageQueue.size取队列
                 Collections.singletonList(result.takeMessageQueueByMessageGroup(messageGroup));
             final SettableFuture<List<SendReceiptImpl>> future0 = SettableFuture.create();
+            // 发送消息
             send0(future0, topic, messageType, candidates, pubMessages, 1);
             return future0;
         }, MoreExecutors.directExecutor());
@@ -421,9 +427,12 @@ class ProducerImpl extends ClientImpl implements Producer {
 
     ListenableFuture<List<SendReceiptImpl>> send0(Endpoints endpoints, List<PublishingMessageImpl> pubMessages,
         MessageQueueImpl mq) {
+        // 模型转换 -> proto
         final SendMessageRequest request = wrapSendMessageRequest(pubMessages, mq);
+        // 调用proxy
         final RpcFuture<SendMessageRequest, SendMessageResponse> future0 =
             this.getClientManager().sendMessage(endpoints, request, clientConfiguration.getRequestTimeout());
+        // 模型转换 <- proto
         return Futures.transformAsync(future0,
             response -> Futures.immediateFuture(SendReceiptImpl.processResponseInvocation(mq, response, future0)),
             MoreExecutors.directExecutor());
@@ -445,6 +454,7 @@ class ProducerImpl extends ClientImpl implements Producer {
             return;
         }
         final Endpoints endpoints = mq.getBroker().getEndpoints();
+        // 发送消息
         final ListenableFuture<List<SendReceiptImpl>> future = send0(endpoints, messages, mq);
         final int maxAttempts = this.getRetryPolicy().getMaxAttempts();
 
@@ -505,7 +515,11 @@ class ProducerImpl extends ClientImpl implements Producer {
                     messageIds.add(message.getMessageId());
                 }
                 // Isolate endpoints because of sending failure.
+
+                // 1. 隔离endpoints，后续不会再选择
                 isolate(endpoints);
+
+                // 2. 超出3次，失败
                 if (attempt >= maxAttempts) {
                     // No need more attempts.
                     future0.setException(t);
@@ -515,6 +529,7 @@ class ProducerImpl extends ClientImpl implements Producer {
                     return;
                 }
                 // No need more attempts for transactional message.
+                // 3. 事务消息，异常结束，不重试
                 if (MessageType.TRANSACTION.equals(messageType)) {
                     future0.setException(t);
                     log.error("Failed to send transactional message finally, maxAttempts=1, attempt={}, " +
@@ -525,6 +540,8 @@ class ProducerImpl extends ClientImpl implements Producer {
                 // Try to do more attempts.
                 int nextAttempt = 1 + attempt;
                 // Retry immediately if the request is not throttled.
+
+                // 4. 如果不是因为流控而导致失败，立即重试
                 if (!(t instanceof TooManyRequestsException)) {
                     log.warn("Failed to send message, would attempt to resend right now, maxAttempts={}, "
                             + "attempt={}, topic={}, messageId(s)={}, endpoints={}, clientId={}", maxAttempts, attempt,
@@ -532,6 +549,7 @@ class ProducerImpl extends ClientImpl implements Producer {
                     send0(future0, topic, messageType, candidates, messages, nextAttempt);
                     return;
                 }
+                // 5. 其他，按照proxy返回Settings重试策略，2指数退避，延迟从10ms到1s
                 final Duration delay = ProducerImpl.this.getRetryPolicy().getNextAttemptDelay(nextAttempt);
                 log.warn("Failed to send message due to too many requests, would attempt to resend after {}, "
                         + "maxAttempts={}, attempt={}, topic={}, messageId(s)={}, endpoints={}, clientId={}", delay,

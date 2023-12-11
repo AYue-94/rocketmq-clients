@@ -43,9 +43,11 @@ public class ClientSessionImpl implements StreamObserver<TelemetryCommand> {
     private static final Logger log = LoggerFactory.getLogger(ClientSessionImpl.class);
     private static final Duration SETTINGS_INITIALIZATION_TIMEOUT = Duration.ofSeconds(3);
 
+    // ClientImpl -> ProducerImpl/ConsumerImpl
     private final ClientSessionHandler sessionHandler;
     private final Endpoints endpoints;
     private final SettableFuture<Settings> future;
+    // 输出流
     private volatile StreamObserver<TelemetryCommand> requestObserver;
 
     @SuppressWarnings("UnstableApiUsage")
@@ -56,6 +58,7 @@ public class ClientSessionImpl implements StreamObserver<TelemetryCommand> {
         this.future = SettableFuture.create();
         Futures.withTimeout(future, SETTINGS_INITIALIZATION_TIMEOUT.plus(tolerance).toMillis(),
             TimeUnit.MILLISECONDS, sessionHandler.getScheduler());
+        // 开启grpc双向流
         this.requestObserver = sessionHandler.telemetry(endpoints, this);
     }
 

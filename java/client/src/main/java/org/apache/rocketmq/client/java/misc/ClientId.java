@@ -30,13 +30,13 @@ public class ClientId {
         this.index = INDEX.getAndIncrement();
         StringBuilder sb = new StringBuilder();
         final String hostName = Utilities.hostName();
-        sb.append(hostName);
+        sb.append(hostName); // hostname
         sb.append(CLIENT_ID_SEPARATOR);
-        sb.append(Utilities.processId());
+        sb.append(Utilities.processId()); // pid
         sb.append(CLIENT_ID_SEPARATOR);
-        sb.append(index);
+        sb.append(index); // index++
         sb.append(CLIENT_ID_SEPARATOR);
-        sb.append(Long.toString(System.nanoTime(), 36));
+        sb.append(Long.toString(System.nanoTime(), 36)); // startTime
         this.id = sb.toString();
     }
 

@@ -159,8 +159,11 @@ class ProcessQueueImpl implements ProcessQueue {
     }
 
     private int getReceptionBatchSize() {
+        // max(1, 1024/master broker数量) - 本地缓存消息数量
         int bufferSize = consumer.cacheMessageCountThresholdPerQueue() - this.cachedMessagesCount();
+        // 不小于1
         bufferSize = Math.max(bufferSize, 1);
+        // 不大于32 --- settings同步 proxy确定
         return Math.min(bufferSize, consumer.getPushConsumerSettings().getReceiveBatchSize());
     }
 
@@ -204,7 +207,7 @@ class ProcessQueueImpl implements ProcessQueue {
         }
         if (this.isCacheFull()) {
             log.warn("Process queue cache is full, would receive message later, mq={}, clientId={}", mq, clientId);
-            receiveMessageLater(RECEIVING_BACKOFF_DELAY_WHEN_CACHE_IS_FULL);
+            receiveMessageLater(RECEIVING_BACKOFF_DELAY_WHEN_CACHE_IS_FULL); // 1s
             return;
         }
         receiveMessageImmediately();
@@ -218,6 +221,7 @@ class ProcessQueueImpl implements ProcessQueue {
         }
         try {
             final Endpoints endpoints = mq.getBroker().getEndpoints();
+            // S1 决策拉消息数量
             final int batchSize = this.getReceptionBatchSize();
             final Duration longPollingTimeout = consumer.getPushConsumerSettings().getLongPollingTimeout();
             final ReceiveMessageRequest request = consumer.wrapReceiveMessageRequest(batchSize, mq, filterExpression,
@@ -228,8 +232,10 @@ class ProcessQueueImpl implements ProcessQueue {
             final MessageInterceptorContextImpl context = new MessageInterceptorContextImpl(MessageHookPoints.RECEIVE);
             consumer.doBefore(context, Collections.emptyList());
 
+            // S2 从proxy拉消息
             final ListenableFuture<ReceiveMessageResult> future = consumer.receiveMessage(request, mq,
                 longPollingTimeout);
+            // S3 处理响应
             Futures.addCallback(future, new FutureCallback<ReceiveMessageResult>() {
                 @Override
                 public void onSuccess(ReceiveMessageResult result) {
@@ -325,11 +331,14 @@ class ProcessQueueImpl implements ProcessQueue {
     private void onReceiveMessageResult(ReceiveMessageResult result) {
         final List<MessageViewImpl> messages = result.getMessageViewImpls();
         if (!messages.isEmpty()) {
+            // S1 缓存消息
             cacheMessages(messages);
             receivedMessagesQuantity.getAndAdd(messages.size());
             consumer.getReceivedMessagesQuantity().getAndAdd(messages.size());
+            // S2 提交到消费线程
             consumer.getConsumeService().consume(this, messages);
         }
+        // S3 再次拉消息
         receiveMessage();
     }
 
@@ -355,13 +364,16 @@ class ProcessQueueImpl implements ProcessQueue {
     @Override
     public void eraseMessage(MessageViewImpl messageView, ConsumeResult consumeResult) {
         statsConsumptionResult(consumeResult);
+        // ack/nack
         ListenableFuture<Void> future = ConsumeResult.SUCCESS.equals(consumeResult) ? ackMessage(messageView) :
             nackMessage(messageView);
+        // 缓存移除
         future.addListener(() -> evictCache(messageView), MoreExecutors.directExecutor());
     }
 
     private ListenableFuture<Void> nackMessage(final MessageViewImpl messageView) {
         final int deliveryAttempt = messageView.getDeliveryAttempt();
+        // 重试策略 settings同步 proxy返回 1s 5s 10s 30s 60s 120s ... 7200s 17次
         final Duration duration = consumer.getRetryPolicy().getNextAttemptDelay(deliveryAttempt);
         final SettableFuture<Void> future0 = SettableFuture.create();
         changeInvisibleDuration(messageView, duration, 1, future0);
@@ -555,6 +567,7 @@ class ProcessQueueImpl implements ProcessQueue {
         final String consumerGroup = consumer.getConsumerGroup();
         final MessageId messageId = messageView.getMessageId();
         final Endpoints endpoints = messageView.getEndpoints();
+        // 调用proxy
         final RpcFuture<AckMessageRequest, AckMessageResponse> future =
             consumer.ackMessage(messageView);
         Futures.addCallback(future, new FutureCallback<AckMessageResponse>() {
@@ -572,7 +585,7 @@ class ProcessQueueImpl implements ProcessQueue {
                     return;
                 }
                 // Log failure and retry later.
-                if (!Code.OK.equals(code)) {
+                if (!Code.OK.equals(code)) { // 延迟1s重试ack
                     log.error("Failed to ack message, would attempt to re-ack later, clientId={}, "
                             + "consumerGroup={}, attempt={}, messageId={}, mq={}, code={}, requestId={}, endpoints={}, "
                             + "status message=[{}]", clientId, consumerGroup, attempt, messageId, mq, code, requestId,
