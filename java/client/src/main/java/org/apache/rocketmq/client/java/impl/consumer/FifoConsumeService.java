@@ -60,9 +60,12 @@ class FifoConsumeService extends ConsumeService {
             consumeIteratively(pq, iterator);
             return;
         }
+        // 1. 提交单条消息ConsumeTask到消费线程
         final ListenableFuture<ConsumeResult> future0 = consume(messageView);
+        // 2. 消费完毕，eraseFifoMessage
         ListenableFuture<Void> future = Futures.transformAsync(future0, result -> pq.eraseFifoMessage(messageView,
             result), MoreExecutors.directExecutor());
+        // 3. 递归下一条消息
         future.addListener(() -> consumeIteratively(pq, iterator), MoreExecutors.directExecutor());
     }
 }

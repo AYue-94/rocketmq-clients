@@ -108,7 +108,7 @@ public class PushSubscriptionSettings extends Settings {
             return;
         }
         final Subscription subscription = settings.getSubscription();
-        this.fifo = subscription.getFifo();
+        this.fifo = subscription.getFifo(); // 是否顺序消费
         this.receiveBatchSize = subscription.getReceiveBatchSize();
         this.longPollingTimeout = Duration.ofNanos(Durations.toNanos(subscription.getLongPollingTimeout()));
         final RetryPolicy backoffPolicy = settings.getBackoffPolicy();

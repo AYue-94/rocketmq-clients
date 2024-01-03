@@ -221,7 +221,7 @@ class ProcessQueueImpl implements ProcessQueue {
         }
         try {
             final Endpoints endpoints = mq.getBroker().getEndpoints();
-            // S1 决策拉消息数量
+            // S1 决策拉消息数量 模型转换
             final int batchSize = this.getReceptionBatchSize();
             final Duration longPollingTimeout = consumer.getPushConsumerSettings().getLongPollingTimeout();
             final ReceiveMessageRequest request = consumer.wrapReceiveMessageRequest(batchSize, mq, filterExpression,
@@ -458,12 +458,14 @@ class ProcessQueueImpl implements ProcessQueue {
     public ListenableFuture<Void> eraseFifoMessage(MessageViewImpl messageView, ConsumeResult consumeResult) {
         statsConsumptionResult(consumeResult);
         final RetryPolicy retryPolicy = consumer.getRetryPolicy();
-        final int maxAttempts = retryPolicy.getMaxAttempts();
+        final int maxAttempts = retryPolicy.getMaxAttempts(); // 17
         int attempt = messageView.getDeliveryAttempt();
         final MessageId messageId = messageView.getMessageId();
         final ConsumeService service = consumer.getConsumeService();
         final ClientId clientId = consumer.getClientId();
+        // case1 消费失败重试，最多重试16次
         if (ConsumeResult.FAILURE.equals(consumeResult) && attempt < maxAttempts) {
+            // (1s) 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h (2h)
             final Duration nextAttemptDelay = retryPolicy.getNextAttemptDelay(attempt);
             attempt = messageView.incrementAndGetDeliveryAttempt();
             log.debug("Prepare to redeliver the fifo message because of the consumption failure, maxAttempt={}," +
@@ -479,6 +481,7 @@ class ProcessQueueImpl implements ProcessQueue {
                 + "attempt={}, mq={}, messageId={}, clientId={}", maxAttempts, attempt, mq, messageId, clientId);
         }
         // Ack message or forward it to DLQ depends on consumption result.
+        // case2 消费成功，ack消息；case3 消费失败，超过16次，投递到DLQ
         ListenableFuture<Void> future = ok ? ackMessage(messageView) : forwardToDeadLetterQueue(messageView);
         future.addListener(() -> evictCache(messageView), consumer.getConsumptionExecutor());
         return future;

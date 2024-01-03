@@ -45,12 +45,12 @@ public class ProducerFifoMessageExample {
         SessionCredentialsProvider sessionCredentialsProvider =
             new StaticSessionCredentialsProvider(accessKey, secretKey);
 
-        String endpoints = "foobar.com:8080";
+        String endpoints = "127.0.0.1:8081;127.0.0.1:8091";
         ClientConfiguration clientConfiguration = ClientConfiguration.newBuilder()
             .setEndpoints(endpoints)
-            .setCredentialProvider(sessionCredentialsProvider)
+//            .setCredentialProvider(sessionCredentialsProvider)
             .build();
-        String topic = "yourFifoTopic";
+        String topic = "MyOrderTopic";
         // In most case, you don't need to create too many producers, singleton pattern is recommended.
         final Producer producer = provider.newProducerBuilder()
             .setClientConfiguration(clientConfiguration)
@@ -60,24 +60,26 @@ public class ProducerFifoMessageExample {
             // May throw {@link ClientException} if the producer is not initialized.
             .build();
         // Define your message body.
-        byte[] body = "This is a FIFO message for Apache RocketMQ".getBytes(StandardCharsets.UTF_8);
-        String tag = "yourMessageTagA";
-        final Message message = provider.newMessageBuilder()
-            // Set topic for the current message.
-            .setTopic(topic)
-            // Message secondary classifier of message besides topic.
-            .setTag(tag)
-            // Key(s) of the message, another way to mark message besides message id.
-            .setKeys("yourMessageKey-1ff69ada8e0e")
-            // Message group decides the message delivery order.
-            .setMessageGroup("yourMessageGroup0")
-            .setBody(body)
-            .build();
-        try {
-            final SendReceipt sendReceipt = producer.send(message);
-            log.info("Send message successfully, messageId={}", sendReceipt.getMessageId());
-        } catch (Throwable t) {
-            log.error("Failed to send message", t);
+        String tag = "TagA";
+        for (int i = 0; i < 10; i++) {
+            byte[] body = ("FIFO" + i).getBytes(StandardCharsets.UTF_8);
+            final Message message = provider.newMessageBuilder()
+                // Set topic for the current message.
+                .setTopic(topic)
+                // Message secondary classifier of message besides topic.
+                .setTag(tag)
+                // Key(s) of the message, another way to mark message besides message id.
+                .setKeys("yourMessageKey-1ff69ada8e0e")
+                // Message group decides the message delivery order.
+                .setMessageGroup(i + "")
+                .setBody(body)
+                .build();
+            try {
+                final SendReceipt sendReceipt = producer.send(message);
+                log.info("Send message successfully, messageId={}", sendReceipt.getMessageId());
+            } catch (Throwable t) {
+                log.error("Failed to send message", t);
+            }
         }
         // Close the producer when you don't need it anymore.
         producer.close();

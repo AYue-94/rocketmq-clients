@@ -158,8 +158,10 @@ class PushConsumerImpl extends ConsumerImpl implements PushConsumer {
             log.info("Begin to start the rocketmq push consumer, clientId={}", clientId);
             GaugeObserver gaugeObserver = new ProcessQueueGaugeObserver(processQueueTable, clientId, consumerGroup);
             this.clientMeterManager.setGaugeObserver(gaugeObserver);
+            // 1. 路由 settings 都获取成功
             super.startUp();
             final ScheduledExecutorService scheduler = this.getClientManager().getScheduler();
+            // 2. 创建ConsumeService fifo/standard
             this.consumeService = createConsumeService();
             // Scan assignments periodically.
             scanAssignmentsFuture = scheduler.scheduleWithFixedDelay(() -> {
