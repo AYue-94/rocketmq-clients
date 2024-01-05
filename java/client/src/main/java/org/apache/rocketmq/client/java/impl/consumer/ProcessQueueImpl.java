@@ -464,8 +464,8 @@ class ProcessQueueImpl implements ProcessQueue {
         final ConsumeService service = consumer.getConsumeService();
         final ClientId clientId = consumer.getClientId();
         // case1 消费失败重试，最多重试16次
-        if (ConsumeResult.FAILURE.equals(consumeResult) && attempt < maxAttempts) {
-            // (1s) 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h (2h)
+        if (ConsumeResult.FAILURE.equals(consumeResult) && attempt/*1-16*/ < maxAttempts/*17*/) {
+            // 1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m = 1小时45分钟左右
             final Duration nextAttemptDelay = retryPolicy.getNextAttemptDelay(attempt);
             attempt = messageView.incrementAndGetDeliveryAttempt();
             log.debug("Prepare to redeliver the fifo message because of the consumption failure, maxAttempt={}," +
